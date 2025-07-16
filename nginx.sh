@@ -4,8 +4,8 @@ set -e
 echo "🔧 Cập nhật hệ thống..."
 sudo apt update && sudo apt upgrade -y
 
-echo "🌐 Cài đặt Nginx..."
-sudo apt install -y nginx curl wget unzip
+echo "🌐 Cài đặt Nginx và công cụ hỗ trợ..."
+sudo apt install -y nginx curl wget unzip ufw
 
 echo "✅ Khởi động và bật Nginx..."
 sudo systemctl enable nginx
@@ -24,7 +24,8 @@ function check_port() {
 }
 
 CONFIG_FILE="/usr/local/etc/nginx-ui/app.ini"
-sudo touch $CONFIG_FILE
+sudo mkdir -p $(dirname "$CONFIG_FILE")
+sudo touch "$CONFIG_FILE"
 
 DEFAULT_HTTP_PORT=9000
 DEFAULT_CHALLENGE_PORT=9180
@@ -50,21 +51,42 @@ else
 fi
 
 echo "🔧 Cập nhật cấu hình Nginx UI..."
-sudo sed -i "s/^HTTPPort = .*/HTTPPort = $HTTP_PORT/" $CONFIG_FILE 2>/dev/null || echo "HTTPPort = $HTTP_PORT" | sudo tee -a $CONFIG_FILE
-sudo sed -i "s/^ChallengeHTTPPort = .*/ChallengeHTTPPort = $CHALLENGE_PORT/" $CONFIG_FILE 2>/dev/null || echo "ChallengeHTTPPort = $CHALLENGE_PORT" | sudo tee -a $CONFIG_FILE
+sudo sed -i "s/^HTTPPort = .*/HTTPPort = $HTTP_PORT/" "$CONFIG_FILE" 2>/dev/null || echo "HTTPPort = $HTTP_PORT" | sudo tee -a "$CONFIG_FILE"
+sudo sed -i "s/^ChallengeHTTPPort = .*/ChallengeHTTPPort = $CHALLENGE_PORT/" "$CONFIG_FILE" 2>/dev/null || echo "ChallengeHTTPPort = $CHALLENGE_PORT" | sudo tee -a "$CONFIG_FILE"
 
 echo "🔄 Khởi động lại dịch vụ nginx-ui..."
 sudo systemctl restart nginx-ui
 
-LISTEN_PORT=$HTTP_PORT
+echo "🔐 Cấu hình tường lửa UFW..."
+
+# Cho phép SSH để tránh khóa kết nối
+sudo ufw allow OpenSSH
+
+# Cho phép cổng HTTP/HTTPS
+sudo ufw allow 80
+sudo ufw allow 443
+
+# Cho phép các port Nginx UI
+sudo ufw allow $HTTP_PORT
+sudo ufw allow $CHALLENGE_PORT
+
+# Bật UFW nếu chưa bật
+if sudo ufw status | grep -q "Status: inactive"; then
+  echo "⚠️ UFW đang tắt. Bật tường lửa..."
+  sudo ufw --force enable
+else
+  echo "✅ UFW đã bật."
+fi
+
 IPV4=$(curl -s http://ipv4.icanhazip.com)
 
 echo ""
 echo "✅ Cài đặt hoàn tất!"
-echo "🌐 Truy cập Nginx UI: http://${IPV4}:${LISTEN_PORT}"
+echo "🌐 Truy cập Nginx UI: http://${IPV4}:${HTTP_PORT}"
 echo "🔐 Mặc định tài khoản: admin / admin"
 echo ""
 
+# Thêm alias cho tiện sử dụng
 TARGET_USER=${SUDO_USER:-root}
 BASHRC_PATH=$(eval echo "~$TARGET_USER/.bashrc")
 
