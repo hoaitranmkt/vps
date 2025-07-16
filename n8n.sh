@@ -34,10 +34,27 @@ fi
 # ====================== BIẾN THƯ MỤC =========================
 N8N_DIR="/home/n8n"
 
-# ====================== CÀI ĐẶT GÓI CẦN THIẾT =========================
+# ====================== HÀM KIỂM TRA & CÀI GÓI =========================
+install_if_missing() {
+  for pkg in "$@"; do
+    if ! dpkg -s "$pkg" >/dev/null 2>&1; then
+      echo "📦 Đang cài đặt: $pkg"
+      apt install -y "$pkg"
+    else
+      echo "✅ Gói đã có: $pkg"
+    fi
+  done
+}
+
+# ====================== CẬP NHẬT & CÀI GÓI CẦN THIẾT =========================
 apt update
-apt install -y curl ca-certificates gnupg software-properties-common \
-               docker.io docker-compose-plugin nginx ufw certbot python3-certbot-nginx dnsutils
+install_if_missing curl ca-certificates gnupg software-properties-common \
+                   docker.io docker-compose-plugin nginx ufw certbot \
+                   python3-certbot-nginx dnsutils
+
+# ====================== BẬT & KHỞI ĐỘNG Docker =========================
+systemctl enable docker
+systemctl start docker
 
 # ====================== CẤU HÌNH TƯỜNG LỬA =========================
 ufw allow OpenSSH
@@ -46,7 +63,7 @@ ufw allow 443
 ufw allow 5678
 ufw --force enable
 
-# ====================== TẠO docker compose =========================
+# ====================== TẠO docker-compose.yml =========================
 mkdir -p "$N8N_DIR"
 cat << EOF > "$N8N_DIR/docker-compose.yml"
 version: "3.8"
@@ -90,19 +107,28 @@ nginx -t && systemctl reload nginx
 # ====================== SSL CERTBOT =========================
 certbot --nginx --non-interactive --agree-tos -m admin@$N8N_DOMAIN -d $N8N_DOMAIN
 
-# ====================== QUYỀN THƯ MỤC =========================
+# ====================== PHÂN QUYỀN =========================
 chown -R 1000:1000 "$N8N_DIR"
 chmod -R 755 "$N8N_DIR"
 
-# ====================== CHẠY n8n =========================
+# ====================== KHỞI ĐỘNG n8n =========================
 cd "$N8N_DIR"
 docker compose up -d
 
-# ====================== TẠO ALIAS =========================
-echo "alias n8n-update='cd $N8N_DIR && docker compose down && docker compose pull && docker compose up -d'" >> ~/.bashrc
-source ~/.bashrc
+# ====================== ALIAS CẬP NHẬT n8n =========================
+for alias_name in n8n-update update-n8n; do
+  if ! grep -q "alias $alias_name=" ~/.bashrc; then
+    echo "alias $alias_name='cd $N8N_DIR && docker compose down && docker compose pull && docker compose up -d'" >> ~/.bashrc
+    echo "✅ Alias '$alias_name' đã được thêm vào ~/.bashrc"
+  else
+    echo "ℹ️ Alias '$alias_name' đã tồn tại, bỏ qua."
+  fi
+done
 
-# ====================== THÔNG BÁO HOÀN TẤT =========================
+# Nạp alias ngay (nếu đang chạy tương tác)
+source ~/.bashrc || true
+
+# ====================== THÔNG BÁO =========================
 echo ""
 echo "✅ CÀI ĐẶT HOÀN TẤT!"
 echo "🌐 Truy cập n8n tại: https://${N8N_DOMAIN}"
