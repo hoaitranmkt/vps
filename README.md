@@ -30,3 +30,13 @@ wget https://raw.githubusercontent.com/hoaitranmkt/vps/refs/heads/main/nginx.sh 
   && chmod +x nginx.sh \
   && sudo ./nginx.sh
 ```
+
+https://raw.githubusercontent.com/hoaitranmkt/vps/refs/heads/main/n8n.sh
+
+🟥 Install N8N
+
+```bash
+wget https://raw.githubusercontent.com/hoaitranmkt/vps/refs/heads/main/n8n.sh -O n8n.sh \
+  && chmod +x n8n.sh \
+  && sudo ./n8n.sh
+```
