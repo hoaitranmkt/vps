@@ -86,6 +86,16 @@ function add_alias() {
 add_alias "alias restart-nginx-ui='sudo systemctl restart nginx-ui'"
 add_alias "alias update-nginx-ui='bash -c \"\$(curl -L https://cloud.nginxui.com/install.sh)\" @ install && sudo systemctl restart nginx-ui'"
 
+# Thêm alias cho user hiện tại (nếu không phải root)
+USER_BASHRC="$HOME/.bashrc"
+[ -f "$USER_BASHRC" ] && add_aliases "$USER_BASHRC"
+
+# Thêm alias cho root
+sudo bash -c "$(declare -f add_aliases); add_aliases /root/.bashrc"
+
+# Nạp alias cho root ngay nếu đang là root
+[ "$EUID" -eq 0 ] && source /root/.bashrc || true
+
 echo ""
 echo "ℹ️ Đã thêm alias cho user '$TARGET_USER'."
 echo "👉 Vui lòng chạy 'source $BASHRC_PATH' hoặc mở terminal mới để sử dụng."
