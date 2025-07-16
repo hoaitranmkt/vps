@@ -60,14 +60,14 @@ echo -e "${GREEN}🚦 Khởi động wg-quick@wg0...${NC}"
 sudo systemctl enable wg-quick@wg0
 sudo systemctl start wg-quick@wg0
 
-echo -e "${GREEN}🧱 Thêm rule iptables tạm thời (chỉ đến khi reboot)...${NC}"
+echo -e "${GREEN}🧱 Thêm rule iptables tạm thời...${NC}"
 sudo iptables -A INPUT -p udp --dport 51820 -j ACCEPT
 sudo iptables -t nat -A POSTROUTING -s 10.0.0.0/24 -o eth0 -j MASQUERADE
 
-echo -e "${GREEN}🌐 Cấu hình DNS trong /etc/resolv.conf...${NC}"
+echo -e "${GREEN}🌐 Cấu hình DNS...${NC}"
 sudo bash -c 'echo -e "nameserver 8.8.8.8\nnameserver 1.1.1.1" > /etc/resolv.conf'
 
-echo -e "${GREEN}🔐 Cấu hình UFW cho WireGuard và SSH...${NC}"
+echo -e "${GREEN}🔐 Cấu hình UFW...${NC}"
 sudo ufw allow 51820/udp
 sudo ufw allow OpenSSH
 
@@ -78,14 +78,14 @@ sudo ufw reload
 echo -e "${GREEN}📦 Clone wireguard-ui từ GitHub...${NC}"
 cd ~
 if [ -d wireguard-ui ]; then
-    echo "Thư mục wireguard-ui đã tồn tại, sẽ cập nhật lại."
+    echo "Thư mục wireguard-ui tồn tại, cập nhật repo..."
     cd wireguard-ui && git pull
 else
     git clone https://github.com/ngoduykhanh/wireguard-ui.git
     cd wireguard-ui
 fi
 
-echo -e "${GREEN}🛠️ Viết lại docker-compose.yml...${NC}"
+echo -e "${GREEN}🛠️ Viết docker-compose.yml...${NC}"
 cat <<EOF | tee docker-compose.yml
 version: "3.3"
 services:
@@ -107,11 +107,11 @@ services:
     restart: unless-stopped
 EOF
 
-echo -e "${GREEN}🧱 Build và khởi động wireguard-ui...${NC}"
+echo -e "${GREEN}🧱 Build và chạy wireguard-ui...${NC}"
 docker compose build
 docker compose up -d
 
-echo -e "${GREEN}🔧 Tạo script giữ iptables sau reboot...${NC}"
+echo -e "${GREEN}🔧 Tạo script giữ rule iptables sau reboot...${NC}"
 sudo tee /usr/local/bin/iptables-wireguard.sh > /dev/null << 'EOF'
 #!/bin/bash
 iptables -A INPUT -p udp --dport 51820 -j ACCEPT
@@ -119,7 +119,7 @@ iptables -t nat -A POSTROUTING -s 10.0.0.0/24 -o eth0 -j MASQUERADE
 EOF
 sudo chmod +x /usr/local/bin/iptables-wireguard.sh
 
-echo -e "${GREEN}🔧 Tạo systemd service tự động chạy script iptables sau reboot...${NC}"
+echo -e "${GREEN}🔧 Tạo systemd service iptables-wireguard...${NC}"
 sudo tee /etc/systemd/system/iptables-wireguard.service > /dev/null << EOF
 [Unit]
 Description=Restore WireGuard IPTables Rules
@@ -139,5 +139,5 @@ sudo systemctl enable iptables-wireguard.service
 sudo systemctl start iptables-wireguard.service
 
 PUBLIC_IP=$(curl -s https://api.ipify.org)
-echo -e "${GREEN}🎉 Hoàn tất cài đặt WireGuard + wireguard-ui.${NC}"
-echo -e "${GREEN}🔑 Truy cập giao diện quản lý: http://$PUBLIC_IP:5000 với tài khoản admin/admin${NC}"
+echo -e "${GREEN}🎉 Cài đặt hoàn tất!${NC}"
+echo -e "${GREEN}🔑 Truy cập quản lý WireGuard UI: http://$PUBLIC_IP:5000 (admin/admin)${NC}"
