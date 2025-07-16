@@ -22,3 +22,11 @@ wget https://raw.githubusercontent.com/hoaitranmkt/vps/refs/heads/main/Nodejs.sh
   && chmod +x Nodejs.sh \
   && sudo ./Nodejs.sh
 ```
+
+🔷 Install Nginx + Nginx UI
+
+```bash
+wget https://raw.githubusercontent.com/hoaitranmkt/vps/refs/heads/main/nginx.sh -O nginx.sh \
+  && chmod +x nginx.sh \
+  && sudo ./nginx.sh
+```
