@@ -12,7 +12,7 @@ sudo systemctl enable nginx
 sudo systemctl start nginx
 
 echo "📦 Cài đặt Nginx UI (phiên bản stable)..."
-bash -c "$(curl -L https://cloud.nginxui.com/install.sh)" @ install
+bash -c "$(curl -L https://cloud.nginxui.com/install.sh)"
 
 function check_port() {
   local port=$1
@@ -24,6 +24,7 @@ function check_port() {
 }
 
 CONFIG_FILE="/usr/local/etc/nginx-ui/app.ini"
+sudo touch $CONFIG_FILE
 
 DEFAULT_HTTP_PORT=9000
 DEFAULT_CHALLENGE_PORT=9180
@@ -35,7 +36,6 @@ echo "⚙️ Kiểm tra port mặc định $DEFAULT_HTTP_PORT và $DEFAULT_CHALL
 
 if check_port $DEFAULT_HTTP_PORT || check_port $DEFAULT_CHALLENGE_PORT; then
   echo "⚠️ Port mặc định đang được sử dụng, tìm port trống..."
-
   for p in {9100..9199}; do
     cp=$((p + 180))
     if ! check_port $p && ! check_port $cp; then
@@ -56,10 +56,7 @@ sudo sed -i "s/^ChallengeHTTPPort = .*/ChallengeHTTPPort = $CHALLENGE_PORT/" $CO
 echo "🔄 Khởi động lại dịch vụ nginx-ui..."
 sudo systemctl restart nginx-ui
 
-# Lấy port thực tế đang lắng nghe nginx-ui
-LISTEN_PORT=$(sudo ss -tuln | grep nginx-ui | head -n1 | awk '{print $5}' | awk -F':' '{print $NF}')
-
-# Lấy IPv4 public
+LISTEN_PORT=$HTTP_PORT
 IPV4=$(curl -s http://ipv4.icanhazip.com)
 
 echo ""
@@ -68,7 +65,6 @@ echo "🌐 Truy cập Nginx UI: http://${IPV4}:${LISTEN_PORT}"
 echo "🔐 Mặc định tài khoản: admin / admin"
 echo ""
 
-# Thêm alias vào bashrc user gọi sudo
 TARGET_USER=${SUDO_USER:-root}
 BASHRC_PATH=$(eval echo "~$TARGET_USER/.bashrc")
 
@@ -84,16 +80,8 @@ function add_alias() {
 }
 
 add_alias "alias restart-nginx-ui='sudo systemctl restart nginx-ui'"
-add_alias "alias update-nginx-ui='bash -c \"\$(curl -L https://cloud.nginxui.com/install.sh)\" @ install && sudo systemctl restart nginx-ui'"
+add_alias "alias update-nginx-ui='bash -c \"\$(curl -L https://cloud.nginxui.com/install.sh)\" && sudo systemctl restart nginx-ui'"
 
-# Thêm alias cho user hiện tại (nếu không phải root)
-USER_BASHRC="$HOME/.bashrc"
-[ -f "$USER_BASHRC" ] && add_aliases "$USER_BASHRC"
-
-# Thêm alias cho root
-sudo bash -c "$(declare -f add_aliases); add_aliases /root/.bashrc"
-
-# Nạp alias cho root ngay nếu đang là root
 [ "$EUID" -eq 0 ] && source /root/.bashrc || true
 
 echo ""
