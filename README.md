@@ -6,4 +6,12 @@ wget https://raw.githubusercontent.com/hoaitranmkt/vps/refs/heads/main/docker.sh
   && chmod +x docker.sh \
   && sudo ./docker.sh
 ```
-Test content mới
+
+🛡️ Install Wireguard + Wg-easy
+
+```bash
+wget https://raw.githubusercontent.com/hoaitranmkt/vps/refs/heads/main/wireguard.sh -O wireguard.sh \
+  && chmod +x wireguard.sh \
+  && sudo ./wireguard.sh
+```
+
