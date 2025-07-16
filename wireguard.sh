@@ -52,4 +52,97 @@ cat <<EOF | sudo tee /etc/wireguard/wg0.conf
 Address = 10.0.0.1/24
 ListenPort = 51820
 PrivateKey = $SERVER_PRIVATE_KEY
-PostUp   = iptables -A FORW
+PostUp   = iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -j ACCEPT; iptables -A FORWARD -i wg0 -o wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACCEPT; iptables -D FORWARD -i wg0 -o wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
+EOF
+
+echo -e "${GREEN}🚦 Khởi động wg-quick@wg0...${NC}"
+sudo systemctl enable wg-quick@wg0
+sudo systemctl start wg-quick@wg0
+
+echo -e "${GREEN}🧱 Thêm rule iptables tạm thời...${NC}"
+sudo iptables -A INPUT -p udp --dport 51820 -j ACCEPT
+sudo iptables -A FORWARD -i wg0 -o wg0 -j ACCEPT
+sudo iptables -t nat -A POSTROUTING -s 10.0.0.0/24 -o eth0 -j MASQUERADE
+
+echo -e "${GREEN}🌐 Cấu hình DNS cố định (vô hiệu hóa systemd-resolved)...${NC}"
+sudo systemctl disable systemd-resolved
+sudo systemctl stop systemd-resolved
+sudo rm -f /etc/resolv.conf
+echo -e "nameserver 8.8.8.8\nnameserver 1.1.1.1" | sudo tee /etc/resolv.conf > /dev/null
+
+echo -e "${GREEN}🔐 Cấu hình UFW...${NC}"
+sudo ufw allow 51820/udp
+sudo ufw allow OpenSSH
+
+echo -e "${GREEN}🔄 Kích hoạt và reload UFW...${NC}"
+sudo ufw --force enable
+sudo ufw reload
+
+echo -e "${GREEN}📦 Clone wireguard-ui từ GitHub...${NC}"
+cd ~
+if [ -d wireguard-ui ]; then
+    echo "Thư mục wireguard-ui tồn tại, cập nhật repo..."
+    cd wireguard-ui && git pull
+else
+    git clone https://github.com/ngoduykhanh/wireguard-ui.git
+    cd wireguard-ui
+fi
+
+echo -e "${GREEN}🛠️ Viết docker-compose.yml...${NC}"
+cat <<EOF | tee docker-compose.yml
+version: "3.3"
+services:
+  wireguard-ui:
+    build: .
+    container_name: wireguard-ui
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./db:/app/db
+      - /etc/wireguard:/etc/wireguard
+    environment:
+      - WGUI_USERNAME=admin
+      - WGUI_PASSWORD=admin
+      - WGUI_MANAGE_START=true
+      - WGUI_MANAGE_RESTART=true
+    restart: unless-stopped
+EOF
+
+echo -e "${GREEN}🧱 Build và chạy wireguard-ui...${NC}"
+docker compose build
+docker compose up -d
+
+echo -e "${GREEN}🔧 Tạo script giữ rule iptables sau reboot...${NC}"
+sudo tee /usr/local/bin/iptables-wireguard.sh > /dev/null << 'EOF'
+#!/bin/bash
+iptables -A INPUT -p udp --dport 51820 -j ACCEPT
+iptables -A FORWARD -i wg0 -o wg0 -j ACCEPT
+iptables -t nat -A POSTROUTING -s 10.0.0.0/24 -o eth0 -j MASQUERADE
+EOF
+sudo chmod +x /usr/local/bin/iptables-wireguard.sh
+
+echo -e "${GREEN}🔧 Tạo systemd service iptables-wireguard...${NC}"
+sudo tee /etc/systemd/system/iptables-wireguard.service > /dev/null << EOF
+[Unit]
+Description=Restore WireGuard IPTables Rules
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/iptables-wireguard.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable iptables-wireguard.service
+sudo systemctl start iptables-wireguard.service
+
+PUBLIC_IP=$(curl -s https://api.ipify.org)
+echo -e "${GREEN}🎉 Cài đặt hoàn tất!${NC}"
+echo -e "${GREEN}🔑 Truy cập WireGuard UI: http://$PUBLIC_IP:5000 (admin/admin)${NC}"
