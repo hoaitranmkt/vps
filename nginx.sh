@@ -2,53 +2,55 @@
 
 set -e
 
-echo "🔧 Updating system packages..."
+echo "🔧 Updating system..."
 sudo apt update && sudo apt upgrade -y
 
 echo "🌐 Installing Nginx..."
-sudo apt install nginx -y
+sudo apt install -y nginx curl unzip wget
 
-echo "✅ Nginx installed. Status:"
+echo "✅ Starting Nginx..."
 sudo systemctl enable nginx
 sudo systemctl start nginx
-sudo systemctl status nginx --no-pager
 
-echo "🐳 Installing Docker & Docker Compose..."
-if ! command -v docker &> /dev/null; then
-    curl -fsSL https://get.docker.com | bash
-    sudo usermod -aG docker $USER
-fi
+echo "📦 Downloading Nginx UI..."
 
-if ! command -v docker-compose &> /dev/null; then
-    sudo apt install docker-compose -y
-fi
+# Tạo thư mục cài đặt
+INSTALL_DIR="/opt/nginx-ui"
+sudo mkdir -p $INSTALL_DIR
+cd $INSTALL_DIR
 
-echo "📁 Setting up Nginx UI with Docker..."
+# Tải file zip mới nhất
+sudo wget https://github.com/schx/nginx-ui/releases/latest/download/nginx-ui-linux-amd64.zip -O nginx-ui.zip
 
-mkdir -p ~/nginx-ui
-cd ~/nginx-ui
+# Giải nén
+sudo unzip -o nginx-ui.zip
+sudo chmod +x nginx-ui
 
-cat <<EOF > docker-compose.yml
-version: "3"
+# Tạo systemd service
+echo "🛠️ Setting up systemd service..."
 
-services:
-  nginx-ui:
-    image: schx/nginx-ui:latest
-    container_name: nginx-ui
-    ports:
-      - "8080:8080"
-    volumes:
-      - /etc/nginx:/etc/nginx
-      - /var/log/nginx:/var/log/nginx
-    environment:
-      - LANG=en
-    restart: always
+sudo tee /etc/systemd/system/nginx-ui.service > /dev/null <<EOF
+[Unit]
+Description=Nginx UI
+After=network.target
+
+[Service]
+ExecStart=$INSTALL_DIR/nginx-ui
+WorkingDirectory=$INSTALL_DIR
+Restart=always
+User=root
+
+[Install]
+WantedBy=multi-user.target
 EOF
 
-echo "🚀 Starting Nginx UI..."
-docker compose up -d
+# Reload, enable, and start service
+sudo systemctl daemon-reexec
+sudo systemctl daemon-reload
+sudo systemctl enable nginx-ui
+sudo systemctl start nginx-ui
 
-# Lấy địa chỉ IPv4 công khai
+# Lấy IP công khai
 IPV4=$(curl -s http://ipv4.icanhazip.com)
 
 echo "✅ Installation complete!"
