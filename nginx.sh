@@ -1,28 +1,26 @@
 #!/bin/bash
-
 set -e
 
-echo "🔧 Updating system..."
+echo "🔧 Cập nhật hệ thống..."
 sudo apt update && sudo apt upgrade -y
 
-echo "🌐 Installing Nginx..."
+echo "🌐 Cài đặt Nginx..."
 sudo apt install -y nginx curl wget unzip
 
-echo "✅ Starting Nginx..."
+echo "✅ Khởi động và bật Nginx..."
 sudo systemctl enable nginx
 sudo systemctl start nginx
 
-echo "📦 Installing Nginx UI (Stable version)..."
+echo "📦 Cài đặt Nginx UI (phiên bản stable)..."
 bash -c "$(curl -L https://cloud.nginxui.com/install.sh)" @ install
 
-# Hàm kiểm tra port có đang được sử dụng?
 function check_port() {
-    local port=$1
-    if ss -tuln | grep -q ":$port\b"; then
-        return 0
-    else
-        return 1
-    fi
+  local port=$1
+  if ss -tuln | grep -q ":$port\b"; then
+    return 0
+  else
+    return 1
+  fi
 }
 
 CONFIG_FILE="/usr/local/etc/nginx-ui/app.ini"
@@ -30,69 +28,64 @@ CONFIG_FILE="/usr/local/etc/nginx-ui/app.ini"
 DEFAULT_HTTP_PORT=9000
 DEFAULT_CHALLENGE_PORT=9180
 
-NEW_HTTP_PORT=$DEFAULT_HTTP_PORT
-NEW_CHALLENGE_PORT=$DEFAULT_CHALLENGE_PORT
+HTTP_PORT=$DEFAULT_HTTP_PORT
+CHALLENGE_PORT=$DEFAULT_CHALLENGE_PORT
 
-changed_ports=0
-
-echo "⚙️ Checking if default ports $DEFAULT_HTTP_PORT and $DEFAULT_CHALLENGE_PORT are free..."
+echo "⚙️ Kiểm tra port mặc định $DEFAULT_HTTP_PORT và $DEFAULT_CHALLENGE_PORT..."
 
 if check_port $DEFAULT_HTTP_PORT || check_port $DEFAULT_CHALLENGE_PORT; then
-    echo "⚠️ One or both default ports are in use. Trying to change ports..."
+  echo "⚠️ Port mặc định đang được sử dụng, tìm port trống..."
 
-    # Tìm port trống bắt đầu từ 9100 cho HTTP và 9280 cho Challenge
-    for port in {9100..9199}; do
-        challenge_port=$((port + 180))
-        if ! check_port $port && ! check_port $challenge_port; then
-            NEW_HTTP_PORT=$port
-            NEW_CHALLENGE_PORT=$challenge_port
-            changed_ports=1
-            break
-        fi
-    done
-
-    if [ $changed_ports -eq 1 ]; then
-        echo "✅ Changing Nginx UI HTTPPort to $NEW_HTTP_PORT and ChallengeHTTPPort to $NEW_CHALLENGE_PORT"
-
-        sudo sed -i "s/^HTTPPort = .*/HTTPPort = $NEW_HTTP_PORT/" $CONFIG_FILE
-        sudo sed -i "s/^ChallengeHTTPPort = .*/ChallengeHTTPPort = $NEW_CHALLENGE_PORT/" $CONFIG_FILE
-
-        echo "🔄 Restarting nginx-ui service..."
-        sudo systemctl restart nginx-ui
-    else
-        echo "❌ Could not find free ports to assign. Please manually edit $CONFIG_FILE"
+  for p in {9100..9199}; do
+    cp=$((p + 180))
+    if ! check_port $p && ! check_port $cp; then
+      HTTP_PORT=$p
+      CHALLENGE_PORT=$cp
+      echo "✅ Tìm được cặp port trống: HTTPPort=$HTTP_PORT, ChallengeHTTPPort=$CHALLENGE_PORT"
+      break
     fi
+  done
 else
-    echo "✅ Default ports are free, no changes needed."
+  echo "✅ Port mặc định còn trống, sử dụng $DEFAULT_HTTP_PORT và $DEFAULT_CHALLENGE_PORT"
 fi
 
-# Lấy IPv4 công khai
+echo "🔧 Cập nhật cấu hình Nginx UI..."
+sudo sed -i "s/^HTTPPort = .*/HTTPPort = $HTTP_PORT/" $CONFIG_FILE 2>/dev/null || echo "HTTPPort = $HTTP_PORT" | sudo tee -a $CONFIG_FILE
+sudo sed -i "s/^ChallengeHTTPPort = .*/ChallengeHTTPPort = $CHALLENGE_PORT/" $CONFIG_FILE 2>/dev/null || echo "ChallengeHTTPPort = $CHALLENGE_PORT" | sudo tee -a $CONFIG_FILE
+
+echo "🔄 Khởi động lại dịch vụ nginx-ui..."
+sudo systemctl restart nginx-ui
+
+# Lấy port thực tế đang lắng nghe nginx-ui
+LISTEN_PORT=$(sudo ss -tuln | grep nginx-ui | head -n1 | awk '{print $5}' | awk -F':' '{print $NF}')
+
+# Lấy IPv4 public
 IPV4=$(curl -s http://ipv4.icanhazip.com)
 
 echo ""
-echo "✅ Installation complete!"
-echo "🌐 Access Nginx UI: http://${IPV4}:${NEW_HTTP_PORT}"
-echo "🔐 Default login: admin / admin"
+echo "✅ Cài đặt hoàn tất!"
+echo "🌐 Truy cập Nginx UI: http://${IPV4}:${LISTEN_PORT}"
+echo "🔐 Mặc định tài khoản: admin / admin"
 echo ""
 
-# Thêm alias vào .bashrc user gọi sudo
+# Thêm alias vào bashrc user gọi sudo
 TARGET_USER=${SUDO_USER:-root}
 BASHRC_PATH=$(eval echo "~$TARGET_USER/.bashrc")
 
 function add_alias() {
-    local alias_cmd="$1"
-    local alias_name=$(echo "$alias_cmd" | awk '{print $2}' | cut -d= -f1)
-    if ! grep -q "^alias $alias_name=" "$BASHRC_PATH"; then
-        echo "$alias_cmd" >> "$BASHRC_PATH"
-        echo "✅ Alias '$alias_name' added to $BASHRC_PATH"
-    else
-        echo "ℹ️ Alias '$alias_name' already exists in $BASHRC_PATH"
-    fi
+  local alias_cmd="$1"
+  local alias_name=$(echo "$alias_cmd" | awk '{print $2}' | cut -d= -f1)
+  if ! grep -q "^alias $alias_name=" "$BASHRC_PATH"; then
+    echo "$alias_cmd" >> "$BASHRC_PATH"
+    echo "✅ Alias '$alias_name' đã thêm vào $BASHRC_PATH"
+  else
+    echo "ℹ️ Alias '$alias_name' đã tồn tại trong $BASHRC_PATH"
+  fi
 }
 
 add_alias "alias restart-nginx-ui='sudo systemctl restart nginx-ui'"
 add_alias "alias update-nginx-ui='bash -c \"\$(curl -L https://cloud.nginxui.com/install.sh)\" @ install && sudo systemctl restart nginx-ui'"
 
 echo ""
-echo "ℹ️ Aliases added for user '$TARGET_USER'."
-echo "👉 Please run 'source $BASHRC_PATH' or open a new terminal to use them."
+echo "ℹ️ Đã thêm alias cho user '$TARGET_USER'."
+echo "👉 Vui lòng chạy 'source $BASHRC_PATH' hoặc mở terminal mới để sử dụng."
