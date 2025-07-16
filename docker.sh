@@ -23,15 +23,15 @@ echo \
   $(lsb_release -cs) stable" | \
   sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-# Cài đặt Docker Engine và Docker Compose plugin
+# Cài đặt Docker và Docker Compose plugin
 sudo apt update
 sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
-# Bật Docker và cho chạy khi khởi động
+# Bật và khởi động Docker
 sudo systemctl enable docker
 sudo systemctl start docker
 
-# Thêm user hiện tại vào nhóm docker
+# Thêm user hiện tại vào group docker
 sudo usermod -aG docker $USER
 
 # Cài đặt Portainer
@@ -45,15 +45,20 @@ docker run -d \
   -v portainer_data:/data \
   portainer/portainer-ce:latest
 
-# Tạo alias update
+# Thêm alias cập nhật Docker
 echo 'alias docker-update="sudo apt update && sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin"' >> ~/.bashrc
-echo 'alias portainer-update="docker pull portainer/portainer-ce:latest && docker stop portainer && docker rm portainer && docker run -d --name portainer --restart=always -p 8000:8000 -p 9443:9443 -v /var/run/docker.sock:/var/run/docker.sock -v portainer_data:/data portainer/portainer-ce:latest"' >> ~/.bashrc
+echo 'alias update-docker="sudo apt update && sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin"' >> ~/.bashrc
 
+# Thêm alias cập nhật Portainer
+echo 'alias portainer-update="docker pull portainer/portainer-ce:latest && docker stop portainer && docker rm portainer && docker run -d --name portainer --restart=always -p 8000:8000 -p 9443:9443 -v /var/run/docker.sock:/var/run/docker.sock -v portainer_data:/data portainer/portainer-ce:latest"' >> ~/.bashrc
+echo 'alias update-portainer="docker pull portainer/portainer-ce:latest && docker stop portainer && docker rm portainer && docker run -d --name portainer --restart=always -p 8000:8000 -p 9443:9443 -v /var/run/docker.sock:/var/run/docker.sock -v portainer_data:/data portainer/portainer-ce:latest"' >> ~/.bashrc
+
+# Nạp lại bashrc
 source ~/.bashrc
 
-# Lấy IP public (dùng dịch vụ ifconfig.me, fallback nếu curl không có mạng)
-IP=$(curl -s ifconfig.me || hostname -I | awk '{print $1}')
+# Lấy IPv4 công khai
+IP=$(curl -s -4 ifconfig.me || hostname -I | awk '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) {print $i; exit}}')
 
 echo "✅ Cài đặt hoàn tất!"
 echo "👉 Truy cập Portainer tại: https://$IP:9443"
-echo "❗ Hãy đăng xuất và đăng nhập lại để group 'docker' có hiệu lực."
+echo "❗ Đăng xuất và đăng nhập lại để nhóm 'docker' có hiệu lực."
