@@ -1,4 +1,4 @@
-# vps
+# Install New VPS
 🚀 Install Docker + Docker compose + Portainer
 
 ```bash
