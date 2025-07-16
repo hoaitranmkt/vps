@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 # ====================== KIỂM TRA QUYỀN ROOT =========================
 if [[ $EUID -ne 0 ]]; then
@@ -36,7 +37,7 @@ N8N_DIR="/home/n8n"
 # ====================== CÀI ĐẶT GÓI CẦN THIẾT =========================
 apt update
 apt install -y curl ca-certificates gnupg software-properties-common \
-               docker.io docker-compose nginx ufw certbot python3-certbot-nginx
+               docker.io docker-compose-plugin nginx ufw certbot python3-certbot-nginx dnsutils
 
 # ====================== CẤU HÌNH TƯỜNG LỬA =========================
 ufw allow OpenSSH
@@ -45,7 +46,7 @@ ufw allow 443
 ufw allow 5678
 ufw --force enable
 
-# ====================== CẤU HÌNH n8n (DOCKER-COMPOSE) =========================
+# ====================== TẠO docker compose =========================
 mkdir -p "$N8N_DIR"
 cat << EOF > "$N8N_DIR/docker-compose.yml"
 version: "3.8"
@@ -83,9 +84,8 @@ server {
 }
 EOF
 
-ln -s /etc/nginx/sites-available/n8n /etc/nginx/sites-enabled/
-
-nginx -t && systemctl restart nginx
+ln -sf /etc/nginx/sites-available/n8n /etc/nginx/sites-enabled/
+nginx -t && systemctl reload nginx
 
 # ====================== SSL CERTBOT =========================
 certbot --nginx --non-interactive --agree-tos -m admin@$N8N_DOMAIN -d $N8N_DOMAIN
@@ -96,10 +96,10 @@ chmod -R 755 "$N8N_DIR"
 
 # ====================== CHẠY n8n =========================
 cd "$N8N_DIR"
-docker-compose up -d
+docker compose up -d
 
 # ====================== TẠO ALIAS =========================
-echo "alias n8n-update='cd $N8N_DIR && docker-compose down && docker-compose pull && docker-compose up -d'" >> ~/.bashrc
+echo "alias n8n-update='cd $N8N_DIR && docker compose down && docker compose pull && docker compose up -d'" >> ~/.bashrc
 source ~/.bashrc
 
 # ====================== THÔNG BÁO HOÀN TẤT =========================
