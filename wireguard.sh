@@ -11,7 +11,7 @@ echo -e "${GREEN}🐳 Kiểm tra & cài đặt Docker...${NC}"
 if ! command -v docker &> /dev/null; then
     curl -fsSL https://get.docker.com | sudo bash
     sudo usermod -aG docker $USER
-    newgrp docker
+    echo -e "${GREEN}⚠️ Bạn cần đăng xuất và đăng nhập lại để áp dụng quyền Docker.${NC}"
 else
     echo -e "${GREEN}✅ Docker đã được cài.${NC}"
 fi
@@ -87,28 +87,21 @@ alias update-wireguard='sudo apt update && sudo apt install --only-upgrade wireg
 alias wireguard-update='update-wireguard'
 
 # Alias cập nhật wg-easy
-alias update-wg-easy='
-echo "📥 Kéo image mới nhất của wg-easy..."
+alias update-wg-easy='bash -c "
+echo \"📥 Kéo image mới nhất của wg-easy...\"
 docker pull weejewel/wg-easy
-echo "🔄 Khởi động lại container wg-easy..."
+echo \"🔄 Khởi động lại container wg-easy...\"
 docker stop wg-easy && docker rm wg-easy
 cd ~/wg-easy && docker compose up -d
-echo "✅ wg-easy đã được cập nhật!"
-'
+echo \"✅ wg-easy đã được cập nhật!\"
+"'
 
 alias wg-easy-update='update-wg-easy'
 
 EOF
 
-# Thêm alias cho user hiện tại (nếu không phải root)
-USER_BASHRC="$HOME/.bashrc"
-[ -f "$USER_BASHRC" ] && add_aliases "$USER_BASHRC"
-
-# Thêm alias cho root
-sudo bash -c "$(declare -f add_aliases); add_aliases /root/.bashrc"
-
-# Nạp alias cho root ngay nếu đang là root
-[ "$EUID" -eq 0 ] && source /root/.bashrc || true
+# Nạp lại alias nếu đang là người dùng root
+[ "$EUID" -eq 0 ] && source ~/.bashrc || true
 
 echo -e "${GREEN}🎉 Cài đặt wg-easy hoàn tất!${NC}"
 echo -e "${GREEN}🔗 Truy cập giao diện quản lý tại: http://$PUBLIC_IP:51821${NC}"
