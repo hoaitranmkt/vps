@@ -64,8 +64,11 @@ echo -e "${GREEN}🧱 Thêm rule iptables tạm thời...${NC}"
 sudo iptables -A INPUT -p udp --dport 51820 -j ACCEPT
 sudo iptables -t nat -A POSTROUTING -s 10.0.0.0/24 -o eth0 -j MASQUERADE
 
-echo -e "${GREEN}🌐 Cấu hình DNS...${NC}"
-sudo bash -c 'echo -e "nameserver 8.8.8.8\nnameserver 1.1.1.1" > /etc/resolv.conf'
+echo -e "${GREEN}🌐 Cấu hình DNS cố định (vô hiệu hóa systemd-resolved)...${NC}"
+sudo systemctl disable systemd-resolved
+sudo systemctl stop systemd-resolved
+sudo rm -f /etc/resolv.conf
+echo -e "nameserver 8.8.8.8\nnameserver 1.1.1.1" | sudo tee /etc/resolv.conf > /dev/null
 
 echo -e "${GREEN}🔐 Cấu hình UFW...${NC}"
 sudo ufw allow 51820/udp
