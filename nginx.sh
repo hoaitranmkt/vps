@@ -48,5 +48,8 @@ EOF
 echo "🚀 Starting Nginx UI..."
 docker compose up -d
 
+# Lấy địa chỉ IPv4 công khai
+IPV4=$(curl -s http://ipv4.icanhazip.com)
+
 echo "✅ Installation complete!"
-echo "🌐 Access Nginx UI: http://<your-server-ip>:8080"
+echo "🌐 Access Nginx UI: http://${IPV4}:8080"
