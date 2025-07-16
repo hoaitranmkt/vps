@@ -100,7 +100,15 @@ alias wg-easy-update='update-wg-easy'
 
 EOF
 
-source ~/.bashrc
+# Thêm alias cho user hiện tại (nếu không phải root)
+USER_BASHRC="$HOME/.bashrc"
+[ -f "$USER_BASHRC" ] && add_aliases "$USER_BASHRC"
+
+# Thêm alias cho root
+sudo bash -c "$(declare -f add_aliases); add_aliases /root/.bashrc"
+
+# Nạp alias cho root ngay nếu đang là root
+[ "$EUID" -eq 0 ] && source /root/.bashrc || true
 
 echo -e "${GREEN}🎉 Cài đặt wg-easy hoàn tất!${NC}"
 echo -e "${GREEN}🔗 Truy cập giao diện quản lý tại: http://$PUBLIC_IP:51821${NC}"
