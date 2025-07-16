@@ -1,64 +1,68 @@
 #!/bin/bash
-
 set -e
 
 echo "✅ Bắt đầu cài đặt Docker, Docker Compose và Portainer..."
 
-# Cập nhật hệ thống
+# ---------- 1. CÀI ĐẶT DOCKER & COMPOSE ----------
 sudo apt update && sudo apt upgrade -y
-
-# Cài đặt gói phụ thuộc
 sudo apt install -y ca-certificates curl gnupg lsb-release
 
-# Thêm Docker GPG key
 sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
-  sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+ | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 
-# Thêm Docker repo
 echo \
-  "deb [arch=$(dpkg --print-architecture) \
-  signed-by=/etc/apt/keyrings/docker.gpg] \
-  https://download.docker.com/linux/ubuntu \
-  $(lsb_release -cs) stable" | \
-  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+  https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
+ | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
 
-# Cài đặt Docker và Docker Compose plugin
 sudo apt update
-sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo apt install -y docker-ce docker-ce-cli containerd.io \
+                    docker-buildx-plugin docker-compose-plugin
 
-# Bật và khởi động Docker
 sudo systemctl enable docker
 sudo systemctl start docker
 
-# Thêm user hiện tại vào group docker
-sudo usermod -aG docker $USER
+# Thêm user hiện tại vào group docker (nếu không phải root)
+if [[ $EUID -ne 0 ]]; then
+  sudo usermod -aG docker "$USER"
+fi
 
-# Cài đặt Portainer
-docker volume create portainer_data
-docker run -d \
-  --name portainer \
-  --restart=always \
-  -p 8000:8000 \
-  -p 9443:9443 \
+# ---------- 2. CÀI PORTAINER ----------
+docker volume create portainer_data >/dev/null
+docker run -d --name portainer --restart=always \
+  -p 8000:8000 -p 9443:9443 \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v portainer_data:/data \
   portainer/portainer-ce:latest
 
-# Thêm alias cập nhật Docker
-echo 'alias docker-update="sudo apt update && sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin"' >> ~/.bashrc
-echo 'alias update-docker="sudo apt update && sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin"' >> ~/.bashrc
+# ---------- 3. TẠO ALIAS CHO USER & ROOT ----------
+add_aliases() {
+  local TARGET_BASHRC="$1"
 
-# Thêm alias cập nhật Portainer
-echo 'alias portainer-update="docker pull portainer/portainer-ce:latest && docker stop portainer && docker rm portainer && docker run -d --name portainer --restart=always -p 8000:8000 -p 9443:9443 -v /var/run/docker.sock:/var/run/docker.sock -v portainer_data:/data portainer/portainer-ce:latest"' >> ~/.bashrc
-echo 'alias update-portainer="docker pull portainer/portainer-ce:latest && docker stop portainer && docker rm portainer && docker run -d --name portainer --restart=always -p 8000:8000 -p 9443:9443 -v /var/run/docker.sock:/var/run/docker.sock -v portainer_data:/data portainer/portainer-ce:latest"' >> ~/.bashrc
+  # Tránh thêm trùng lặp
+  grep -qxF 'alias docker-update='   "$TARGET_BASHRC" || cat >> "$TARGET_BASHRC" <<'EOF'
+alias docker-update="sudo apt update && sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin"
+alias update-docker="sudo apt update && sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin"
+alias portainer-update="docker pull portainer/portainer-ce:latest && docker stop portainer && docker rm portainer && docker run -d --name portainer --restart=always -p 8000:8000 -p 9443:9443 -v /var/run/docker.sock:/var/run/docker.sock -v portainer_data:/data portainer/portainer-ce:latest"
+alias update-portainer="docker pull portainer/portainer-ce:latest && docker stop portainer && docker rm portainer && docker run -d --name portainer --restart=always -p 8000:8000 -p 9443:9443 -v /var/run/docker.sock:/var/run/docker.sock -v portainer_data:/data portainer/portainer-ce:latest"
+EOF
+}
 
-# Nạp lại bashrc
-source ~/.bashrc
+# Thêm vào ~/.bashrc của user hiện tại (nếu tồn tại)
+USER_BASHRC="$HOME/.bashrc"
+[ -f "$USER_BASHRC" ] && add_aliases "$USER_BASHRC"
 
-# Lấy IPv4 công khai
-IP=$(curl -s -4 ifconfig.me || hostname -I | awk '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) {print $i; exit}}')
+# Thêm vào /root/.bashrc (dù đang chạy với quyền nào)
+sudo bash -c "$(declare -f add_aliases); add_aliases /root/.bashrc"
 
-echo "✅ Cài đặt hoàn tất!"
+# Nạp lại alias ngay nếu đang là root
+[ $EUID -eq 0 ] && source /root/.bashrc || true
+
+# ---------- 4. LẤY ĐỊA CHỈ IPv4 ----------
+IP=$(curl -s -4 ifconfig.me || \
+     hostname -I | awk '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/){print $i; exit}}')
+
+echo -e "\n✅ Cài đặt hoàn tất!"
 echo "👉 Truy cập Portainer tại: https://$IP:9443"
-echo "❗ Đăng xuất và đăng nhập lại để nhóm 'docker' có hiệu lực."
+echo "❗ Nếu vừa thêm user vào group docker, hãy đăng xuất và đăng nhập lại để quyền mới có hiệu lực."
