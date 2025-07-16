@@ -5,9 +5,8 @@ set -e
 GREEN='\033[0;32m'
 NC='\033[0m'
 
-echo -e "${GREEN}🔍 Cập nhật hệ thống và sửa lỗi gói (nếu có)...${NC}"
+echo -e "${GREEN}🔍 Cập nhật hệ thống...${NC}"
 sudo apt update
-sudo apt --fix-broken install -y
 sudo apt upgrade -y
 
 echo -e "${GREEN}🔍 Kiểm tra Docker...${NC}"
@@ -29,8 +28,8 @@ else
     echo -e "${GREEN}✅ Docker Compose đã được cài.${NC}"
 fi
 
-echo -e "${GREEN}🔍 Cài đặt UFW, iptables, netfilter-persistent...${NC}"
-sudo apt install -y netfilter-persistent iptables ufw
+echo -e "${GREEN}🔍 Cài đặt UFW và iptables...${NC}"
+sudo apt install -y ufw iptables
 
 echo -e "${GREEN}✅ Bật IP Forward cho WireGuard...${NC}"
 echo "net.ipv4.ip_forward = 1" | sudo tee /etc/sysctl.d/99-wireguard-forward.conf
@@ -61,23 +60,30 @@ echo -e "${GREEN}🚦 Khởi động wg-quick@wg0...${NC}"
 sudo systemctl enable wg-quick@wg0
 sudo systemctl start wg-quick@wg0
 
-echo -e "${GREEN}🧱 Thêm rule iptables...${NC}"
+echo -e "${GREEN}🧱 Thêm rule iptables tạm thời (chỉ đến khi reboot)...${NC}"
 sudo iptables -A INPUT -p udp --dport 51820 -j ACCEPT
 sudo iptables -t nat -A POSTROUTING -s 10.0.0.0/24 -o eth0 -j MASQUERADE
-sudo netfilter-persistent save
 
 echo -e "${GREEN}🌐 Cấu hình DNS trong /etc/resolv.conf...${NC}"
 sudo bash -c 'echo -e "nameserver 8.8.8.8\nnameserver 1.1.1.1" > /etc/resolv.conf'
 
-echo -e "${GREEN}🔐 Mở cổng UFW cho WireGuard & SSH...${NC}"
+echo -e "${GREEN}🔐 Cấu hình UFW cho WireGuard và SSH...${NC}"
 sudo ufw allow 51820/udp
 sudo ufw allow OpenSSH
+
+echo -e "${GREEN}🔄 Kích hoạt và reload UFW...${NC}"
 sudo ufw --force enable
+sudo ufw reload
 
 echo -e "${GREEN}📦 Clone wireguard-ui từ GitHub...${NC}"
 cd ~
-git clone https://github.com/ngoduykhanh/wireguard-ui.git
-cd wireguard-ui
+if [ -d wireguard-ui ]; then
+    echo "Thư mục wireguard-ui đã tồn tại, sẽ cập nhật lại."
+    cd wireguard-ui && git pull
+else
+    git clone https://github.com/ngoduykhanh/wireguard-ui.git
+    cd wireguard-ui
+fi
 
 echo -e "${GREEN}🛠️ Viết lại docker-compose.yml...${NC}"
 cat <<EOF | tee docker-compose.yml
@@ -104,6 +110,33 @@ EOF
 echo -e "${GREEN}🧱 Build và khởi động wireguard-ui...${NC}"
 docker compose build
 docker compose up -d
+
+echo -e "${GREEN}🔧 Tạo script giữ iptables sau reboot...${NC}"
+sudo tee /usr/local/bin/iptables-wireguard.sh > /dev/null << 'EOF'
+#!/bin/bash
+iptables -A INPUT -p udp --dport 51820 -j ACCEPT
+iptables -t nat -A POSTROUTING -s 10.0.0.0/24 -o eth0 -j MASQUERADE
+EOF
+sudo chmod +x /usr/local/bin/iptables-wireguard.sh
+
+echo -e "${GREEN}🔧 Tạo systemd service tự động chạy script iptables sau reboot...${NC}"
+sudo tee /etc/systemd/system/iptables-wireguard.service > /dev/null << EOF
+[Unit]
+Description=Restore WireGuard IPTables Rules
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/iptables-wireguard.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable iptables-wireguard.service
+sudo systemctl start iptables-wireguard.service
 
 PUBLIC_IP=$(curl -s https://api.ipify.org)
 echo -e "${GREEN}🎉 Hoàn tất cài đặt WireGuard + wireguard-ui.${NC}"
