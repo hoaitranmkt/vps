@@ -46,11 +46,26 @@ install_if_missing() {
   done
 }
 
-# ====================== CẬP NHẬT & CÀI GÓI CẦN THIẾT =========================
+# ====================== CẬP NHẬT & CÀI GÓI CƠ BẢN =========================
 apt update
 install_if_missing curl ca-certificates gnupg software-properties-common \
-                   docker.io docker-compose-plugin nginx ufw certbot \
+                   docker-compose-plugin nginx ufw certbot \
                    python3-certbot-nginx dnsutils
+
+# ====================== CÀI ĐẶT DOCKER CHÍNH THỨC (Docker CE) =========================
+if ! command -v docker &> /dev/null; then
+  echo "🐳 Cài Docker từ Docker CE chính thức..."
+  install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+  chmod a+r /etc/apt/keyrings/docker.gpg
+  echo \
+    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+    $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+    tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+  apt update
+  install_if_missing docker-ce docker-ce-cli containerd.io
+fi
 
 # ====================== BẬT & KHỞI ĐỘNG Docker =========================
 systemctl enable docker
@@ -125,7 +140,6 @@ for alias_name in n8n-update update-n8n; do
   fi
 done
 
-# Nạp alias ngay (nếu đang chạy tương tác)
 source ~/.bashrc || true
 
 # ====================== THÔNG BÁO =========================
