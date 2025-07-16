@@ -78,6 +78,30 @@ sudo ufw allow 51821/tcp
 sudo ufw allow OpenSSH
 sudo ufw --force enable
 
+echo -e "${GREEN}📎 Thêm alias quản lý nhanh...${NC}"
+
+cat <<'EOF' >> ~/.bashrc
+
+# Alias cập nhật WireGuard
+alias update-wireguard='sudo apt update && sudo apt install --only-upgrade wireguard -y'
+alias wireguard-update='update-wireguard'
+
+# Alias cập nhật wg-easy
+alias update-wg-easy='
+echo "📥 Kéo image mới nhất của wg-easy..."
+docker pull weejewel/wg-easy
+echo "🔄 Khởi động lại container wg-easy..."
+docker stop wg-easy && docker rm wg-easy
+cd ~/wg-easy && docker compose up -d
+echo "✅ wg-easy đã được cập nhật!"
+'
+
+alias wg-easy-update='update-wg-easy'
+
+EOF
+
+source ~/.bashrc
+
 echo -e "${GREEN}🎉 Cài đặt wg-easy hoàn tất!${NC}"
 echo -e "${GREEN}🔗 Truy cập giao diện quản lý tại: http://$PUBLIC_IP:51821${NC}"
-echo -e "${GREEN}👤 Mật khẩu đăng nhập: admin${NC}"
+echo -e "${GREEN}👤 Tài khoản mặc định: admin (không cần username)${NC}"
