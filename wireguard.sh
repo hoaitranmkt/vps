@@ -58,6 +58,10 @@ else
     echo -e "${GREEN}✅ Domain đã trỏ đúng IP.${NC}"
 fi
 
+echo -e "${GREEN}🔑 Nhập mật khẩu mới cho tài khoản admin của wg-easy:${NC}"
+read -sp "👉 Mật khẩu: " WG_PASSWORD
+echo
+
 echo -e "${GREEN}🧱 Tạo docker-compose cho wg-easy...${NC}"
 mkdir -p ~/wg-easy && cd ~/wg-easy
 
@@ -69,7 +73,7 @@ services:
     container_name: wg-easy
     environment:
       - WG_HOST=$WG_DOMAIN
-      - PASSWORD=admin
+      - PASSWORD=$WG_PASSWORD
     ports:
       - "51820:51820/udp"
       - "127.0.0.1:51821:51821/tcp"
@@ -145,4 +149,4 @@ EOF
 
 echo -e "${GREEN}🎉 Hoàn tất!${NC}"
 echo -e "${GREEN}🔗 Truy cập wg-easy tại: https://$WG_DOMAIN${NC}"
-echo -e "${GREEN}👤 Tài khoản: admin (chỉ cần mật khẩu)${NC}"
+echo -e "${GREEN}👤 Tài khoản: admin (mật khẩu bạn đã nhập)${NC}"
