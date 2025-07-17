@@ -2,91 +2,92 @@
 set -e
 
 echo "🔧 Cập nhật hệ thống..."
-sudo apt update && sudo apt upgrade -y
+apt update && apt upgrade -y
 
 echo "🌐 Cài đặt Nginx và công cụ hỗ trợ..."
-sudo apt install -y nginx curl wget unzip ufw
+apt install -y nginx curl wget unzip ufw certbot python3-certbot-nginx dnsutils
 
 echo "✅ Khởi động và bật Nginx..."
-sudo systemctl enable nginx
-sudo systemctl start nginx
+systemctl enable nginx
+systemctl start nginx
 
 echo "📦 Cài đặt Nginx UI (phiên bản stable)..."
 bash -c "$(curl -L https://cloud.nginxui.com/install.sh)"
 
-function check_port() {
-  local port=$1
-  if ss -tuln | grep -q ":$port\b"; then
-    return 0
-  else
-    return 1
-  fi
-}
+# ✅ Cấu hình cổng mặc định
+HTTP_PORT=9000
+CHALLENGE_PORT=9180
 
 CONFIG_FILE="/usr/local/etc/nginx-ui/app.ini"
-sudo mkdir -p $(dirname "$CONFIG_FILE")
-sudo touch "$CONFIG_FILE"
+mkdir -p $(dirname "$CONFIG_FILE")
+touch "$CONFIG_FILE"
 
-DEFAULT_HTTP_PORT=9000
-DEFAULT_CHALLENGE_PORT=9180
-
-HTTP_PORT=$DEFAULT_HTTP_PORT
-CHALLENGE_PORT=$DEFAULT_CHALLENGE_PORT
-
-echo "⚙️ Kiểm tra port mặc định $DEFAULT_HTTP_PORT và $DEFAULT_CHALLENGE_PORT..."
-
-if check_port $DEFAULT_HTTP_PORT || check_port $DEFAULT_CHALLENGE_PORT; then
-  echo "⚠️ Port mặc định đang được sử dụng, tìm port trống..."
-  for p in {9100..9199}; do
-    cp=$((p + 180))
-    if ! check_port $p && ! check_port $cp; then
-      HTTP_PORT=$p
-      CHALLENGE_PORT=$cp
-      echo "✅ Tìm được cặp port trống: HTTPPort=$HTTP_PORT, ChallengeHTTPPort=$CHALLENGE_PORT"
-      break
-    fi
-  done
-else
-  echo "✅ Port mặc định còn trống, sử dụng $DEFAULT_HTTP_PORT và $DEFAULT_CHALLENGE_PORT"
-fi
-
-echo "🔧 Cập nhật cấu hình Nginx UI..."
-sudo sed -i "s/^HTTPPort = .*/HTTPPort = $HTTP_PORT/" "$CONFIG_FILE" 2>/dev/null || echo "HTTPPort = $HTTP_PORT" | sudo tee -a "$CONFIG_FILE"
-sudo sed -i "s/^ChallengeHTTPPort = .*/ChallengeHTTPPort = $CHALLENGE_PORT/" "$CONFIG_FILE" 2>/dev/null || echo "ChallengeHTTPPort = $CHALLENGE_PORT" | sudo tee -a "$CONFIG_FILE"
+echo "🔧 Gán cổng mặc định cho Nginx UI..."
+sed -i "s/^HTTPPort = .*/HTTPPort = $HTTP_PORT/" "$CONFIG_FILE" 2>/dev/null || echo "HTTPPort = $HTTP_PORT" >> "$CONFIG_FILE"
+sed -i "s/^ChallengeHTTPPort = .*/ChallengeHTTPPort = $CHALLENGE_PORT/" "$CONFIG_FILE" 2>/dev/null || echo "ChallengeHTTPPort = $CHALLENGE_PORT" >> "$CONFIG_FILE"
 
 echo "🔄 Khởi động lại dịch vụ nginx-ui..."
-sudo systemctl restart nginx-ui
+systemctl restart nginx-ui
 
-echo "🔐 Cấu hình tường lửa UFW..."
+# ========================== NHẬP DOMAIN ==========================
+read -p "🌐 Nhập domain/subdomain cho Nginx UI (ví dụ: nginx.example.com): " NGINX_UI_DOMAIN
 
-# Cho phép SSH để tránh khóa kết nối
-sudo ufw allow OpenSSH
+# ========================== KIỂM TRA DOMAIN ==========================
+check_domain() {
+    local domain=$1
+    local server_ip=$(curl -s https://api.ipify.org)
+    local domain_ip=$(dig +short "$domain")
 
-# Cho phép cổng HTTP/HTTPS
-sudo ufw allow 80
-sudo ufw allow 443
+    if [[ "$domain_ip" == "$server_ip" ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
 
-# Cho phép các port Nginx UI
-sudo ufw allow $HTTP_PORT
-sudo ufw allow $CHALLENGE_PORT
-
-# Bật UFW nếu chưa bật
-if sudo ufw status | grep -q "Status: inactive"; then
-  echo "⚠️ UFW đang tắt. Bật tường lửa..."
-  sudo ufw --force enable
+if check_domain "$NGINX_UI_DOMAIN"; then
+    echo "✅ Domain đã trỏ đúng IP."
 else
-  echo "✅ UFW đã bật."
+    echo "❌ Domain chưa trỏ đúng IP!"
+    echo "👉 Vui lòng cập nhật DNS trỏ về: $(curl -s https://api.ipify.org)"
+    exit 1
 fi
 
-IPV4=$(curl -s http://ipv4.icanhazip.com)
+# ========================== CẤU HÌNH NGINX ==========================
+NGINX_CONF="/etc/nginx/sites-available/nginx-ui"
 
-echo ""
-echo "✅ Cài đặt hoàn tất!"
-echo "🌐 Truy cập Nginx UI: http://${IPV4}:${HTTP_PORT}"
-echo "🔐 Mặc định tài khoản: admin / admin"
-echo ""
+cat << EOF > "$NGINX_CONF"
+server {
+    listen 80;
+    server_name $NGINX_UI_DOMAIN;
 
-# Thêm alias cho tiện sử dụng
+    location / {
+        proxy_pass http://localhost:$HTTP_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_cache_bypass \$http_upgrade;
+    }
+}
+EOF
+
+ln -sf "$NGINX_CONF" /etc/nginx/sites-enabled/
+nginx -t && systemctl reload nginx
+
+# ========================== SSL CERTBOT ==========================
+certbot --nginx --non-interactive --agree-tos -m admin@$NGINX_UI_DOMAIN -d $NGINX_UI_DOMAIN
+
+# ========================== TƯỜNG LỬA ==========================
+ufw allow OpenSSH
+ufw allow 80
+ufw allow 443
+ufw allow $HTTP_PORT
+ufw allow $CHALLENGE_PORT
+
+ufw --force enable
+
+# ========================== ALIAS ==========================
 TARGET_USER=${SUDO_USER:-root}
 BASHRC_PATH=$(eval echo "~$TARGET_USER/.bashrc")
 
@@ -106,6 +107,9 @@ add_alias "alias update-nginx-ui='bash -c \"\$(curl -L https://cloud.nginxui.com
 
 [ "$EUID" -eq 0 ] && source /root/.bashrc || true
 
+# ========================== THÔNG BÁO ==========================
 echo ""
-echo "ℹ️ Đã thêm alias cho user '$TARGET_USER'."
-echo "👉 Vui lòng chạy 'source $BASHRC_PATH' hoặc mở terminal mới để sử dụng."
+echo "✅ Cài đặt hoàn tất!"
+echo "🔐 Truy cập Nginx UI tại: https://$NGINX_UI_DOMAIN"
+echo "📌 Tài khoản mặc định: admin / admin"
+echo "👉 Đã cấu hình HTTPS và Reverse Proxy."
