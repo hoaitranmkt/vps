@@ -39,3 +39,11 @@ wget https://raw.githubusercontent.com/hoaitranmkt/vps/refs/heads/main/n8n.sh -O
   && chmod +x n8n.sh \
   && sudo ./n8n.sh
 ```
+
+🧠 Install Langflow
+
+```bash
+wget https://raw.githubusercontent.com/hoaitranmkt/vps/refs/heads/main/langflow.sh -O langflow.sh \
+  && chmod +x langflow.sh \
+  && sudo ./langflow.sh
+```
