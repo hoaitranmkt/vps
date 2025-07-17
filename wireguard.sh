@@ -45,6 +45,10 @@ sudo mkdir -p /etc/wireguard
 echo -e "${GREEN}🌍 Nhập domain bạn muốn sử dụng cho wg-easy (ví dụ: vpn.example.com):${NC}"
 read -rp "👉 Domain: " WG_DOMAIN
 
+echo -e "${GREEN}🔑 Nhập mật khẩu mới cho giao diện wg-easy:${NC}"
+read -rsp "👉 Mật khẩu: " WG_PASSWORD
+echo ""
+
 echo -e "${GREEN}🔍 Kiểm tra domain đã trỏ đúng IP chưa...${NC}"
 PUBLIC_IP=$(curl -s https://api.ipify.org)
 DOMAIN_IP=$(dig +short "$WG_DOMAIN" | tail -n1)
@@ -57,10 +61,6 @@ if [[ "$PUBLIC_IP" != "$DOMAIN_IP" ]]; then
 else
     echo -e "${GREEN}✅ Domain đã trỏ đúng IP.${NC}"
 fi
-
-echo -e "${GREEN}🔑 Nhập mật khẩu mới cho tài khoản admin của wg-easy:${NC}"
-read -sp "👉 Mật khẩu: " WG_PASSWORD
-echo
 
 echo -e "${GREEN}🧱 Tạo docker-compose cho wg-easy...${NC}"
 mkdir -p ~/wg-easy && cd ~/wg-easy
@@ -149,4 +149,4 @@ EOF
 
 echo -e "${GREEN}🎉 Hoàn tất!${NC}"
 echo -e "${GREEN}🔗 Truy cập wg-easy tại: https://$WG_DOMAIN${NC}"
-echo -e "${GREEN}👤 Tài khoản: admin (mật khẩu bạn đã nhập)${NC}"
+echo -e "${GREEN}👤 Tài khoản: admin | Mật khẩu: mật khẩu bạn đã nhập${NC}"
