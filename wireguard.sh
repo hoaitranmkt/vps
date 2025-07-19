@@ -74,6 +74,9 @@ services:
     environment:
       - WG_HOST=$WG_DOMAIN
       - PASSWORD=$WG_PASSWORD
+      - WG_DEFAULT_ADDRESS=10.8.0.x
+      - WG_DEFAULT_DNS=8.8.8.8
+      - WG_ALLOWED_IPS=10.8.0.0/24
     ports:
       - "51820:51820/udp"
       - "127.0.0.1:51821:51821/tcp"
@@ -87,6 +90,7 @@ services:
       - net.ipv4.conf.all.src_valid_mark=1
     restart: unless-stopped
 EOF
+
 
 echo -e "${GREEN}🚀 Khởi động wg-easy...${NC}"
 docker compose up -d
