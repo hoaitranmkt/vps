@@ -92,7 +92,12 @@ echo -e "${GREEN}✅ Langflow đã được triển khai tại: https://$DOMAIN$
 
 echo -e "${GREEN}🔁 Thêm alias update-langflow...${NC}"
 echo "alias update-langflow='cd ~/langflow && docker compose pull && docker compose up -d'" >> ~/.bashrc
+
+echo -e "${GREEN}🔁 Thêm alias langflow-update (cập nhật Langflow an toàn)...${NC}"
+echo "alias langflow-update='cd ~/langflow && docker compose pull && docker compose up -d'" >> ~/.bashrc
 source ~/.bashrc
+
+
 
 echo -e "${GREEN}🚀 Hoàn tất! Dùng lệnh sau để cập nhật Langflow khi cần:${NC}"
 echo -e "   ${GREEN}update-langflow${NC}"
