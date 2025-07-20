@@ -2,6 +2,7 @@
 set -e
 
 GREEN='\033[0;32m'
+RED='\033[0;31m'
 NC='\033[0m'
 
 echo -e "${GREEN}🔧 Nhập domain để cấu hình cho Langflow:${NC}"
@@ -14,7 +15,7 @@ echo -e "${GREEN}🌐 Kiểm tra domain có trỏ đúng IP ($SERVER_IP) không.
 DOMAIN_IP=$(dig +short "$DOMAIN" | tail -n1)
 
 if [ "$DOMAIN_IP" != "$SERVER_IP" ]; then
-  echo -e "\033[0;31m❌ Domain chưa trỏ đúng IP. IP domain: $DOMAIN_IP\033[0m"
+  echo -e "${RED}❌ Domain chưa trỏ đúng IP. IP domain: $DOMAIN_IP${NC}"
   exit 1
 else
   echo -e "${GREEN}✅ Domain đã trỏ đúng IP!${NC}"
@@ -44,6 +45,7 @@ services:
       - "7860:7860"
     environment:
       - LANGFLOW_ENV=production
+    command: langflow run --host 0.0.0.0
     restart: unless-stopped
 EOF
 
@@ -58,6 +60,17 @@ cat <<EOF > /etc/nginx/sites-available/langflow
 server {
     listen 80;
     server_name $DOMAIN;
+    return 301 https://\$host\$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name $DOMAIN;
+
+    ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 
     location / {
         proxy_pass http://localhost:7860;
@@ -75,11 +88,11 @@ nginx -t && systemctl reload nginx
 echo -e "${GREEN}🔐 Cấp SSL với Certbot...${NC}"
 certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m admin@"$DOMAIN"
 
-echo -e "${GREEN}✅ Langflow đã cài đặt tại: https://$DOMAIN${NC}"
+echo -e "${GREEN}✅ Langflow đã được triển khai tại: https://$DOMAIN${NC}"
 
 echo -e "${GREEN}🔁 Thêm alias update-langflow...${NC}"
 echo "alias update-langflow='cd ~/langflow && docker compose pull && docker compose up -d'" >> ~/.bashrc
 source ~/.bashrc
 
-echo -e "${GREEN}🚀 Xong! Dùng lệnh sau để cập nhật Langflow:${NC}"
+echo -e "${GREEN}🚀 Hoàn tất! Dùng lệnh sau để cập nhật Langflow khi cần:${NC}"
 echo -e "   ${GREEN}update-langflow${NC}"
