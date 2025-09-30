@@ -91,7 +91,6 @@ services:
     restart: unless-stopped
 EOF
 
-
 echo -e "${GREEN}🚀 Khởi động wg-easy...${NC}"
 docker compose up -d
 
@@ -128,6 +127,34 @@ sudo ufw allow 51820/udp
 sudo ufw allow 'Nginx Full'
 sudo ufw allow OpenSSH
 sudo ufw --force enable
+
+# === NAT Option ===
+echo -e "${GREEN}❓ Bạn có muốn bật NAT (cho phép client ra Internet qua VPN)? (y/N)${NC}"
+read -rp "👉 Chọn: " ENABLE_NAT
+
+if [[ "$ENABLE_NAT" =~ ^[Yy]$ ]]; then
+    echo -e "${GREEN}🔧 Thiết lập NAT cho WireGuard...${NC}"
+
+    MAIN_IF=$(ip route | grep '^default' | awk '{print $5}')
+
+    # Flush bảng NAT cũ (không đụng filter để không phá UFW)
+    sudo iptables -t nat -F
+
+    # NAT cho subnet WireGuard ra internet
+    sudo iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o $MAIN_IF -j MASQUERADE
+
+    # Cho phép forward traffic qua wg0
+    sudo iptables -A FORWARD -i wg0 -j ACCEPT
+    sudo iptables -A FORWARD -o wg0 -j ACCEPT
+
+    # Lưu rule để tồn tại sau reboot
+    sudo apt install -y iptables-persistent
+    sudo netfilter-persistent save
+
+    echo -e "${GREEN}✅ NAT đã được bật.${NC}"
+else
+    echo -e "${GREEN}🚫 Bỏ qua NAT. Chỉ kết nối nội bộ VPN.${NC}"
+fi
 
 echo -e "${GREEN}⚙️ Thêm alias quản lý nhanh...${NC}"
 cat <<'EOF' >> ~/.bashrc
