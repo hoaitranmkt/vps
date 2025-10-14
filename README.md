@@ -39,3 +39,11 @@ wget https://raw.githubusercontent.com/hoaitranmkt/vps/refs/heads/main/n8n.sh -O
   && chmod +x n8n.sh \
   && sudo ./n8n.sh
 ```
+
+🐤 Install Netbird
+
+```bash
+wget https://raw.githubusercontent.com/hoaitranmkt/vps/refs/heads/main/netbird.sh -O netbird.sh \
+  && chmod +x netbird.sh \
+  && sudo ./netbird.sh
+```
