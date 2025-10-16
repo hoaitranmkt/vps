@@ -81,7 +81,6 @@ ufw --force enable
 # ====================== TẠO docker-compose.yml =========================
 mkdir -p "$N8N_DIR"
 cat << EOF > "$N8N_DIR/docker-compose.yml"
-version: "3.8"
 services:
   n8n:
     image: n8nio/n8n
