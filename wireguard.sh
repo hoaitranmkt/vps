@@ -1,4 +1,3 @@
-```bash
 #!/bin/bash
 set -e
 
@@ -189,4 +188,3 @@ echo "sudo wg show"
 echo ""
 echo -e "${GREEN}📄 Xem log:${NC}"
 echo "docker logs -f wg-easy"
-```
