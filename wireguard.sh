@@ -1,104 +1,127 @@
+```bash
 #!/bin/bash
 set -e
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
+YELLOW='\033[1;33m'
 NC='\033[0m'
 
-echo -e "${GREEN}🔍 Cập nhật hệ thống...${NC}"
+echo -e "${GREEN}🔄 Cập nhật hệ thống...${NC}"
 sudo apt update && sudo apt upgrade -y
 
-echo -e "${GREEN}🐳 Kiểm tra & cài đặt Docker...${NC}"
+echo -e "${GREEN}🐳 Kiểm tra Docker...${NC}"
 if ! command -v docker &> /dev/null; then
     curl -fsSL https://get.docker.com | sudo bash
     sudo usermod -aG docker $USER
-    echo -e "${GREEN}⚠️ Bạn cần đăng xuất và đăng nhập lại để áp dụng quyền Docker.${NC}"
+    echo -e "${YELLOW}⚠️ Hãy logout/login lại sau khi script hoàn tất để dùng Docker không cần sudo.${NC}"
 else
     echo -e "${GREEN}✅ Docker đã được cài.${NC}"
 fi
 
-echo -e "${GREEN}🔧 Cài đặt Docker Compose plugin nếu cần...${NC}"
+echo -e "${GREEN}🔧 Kiểm tra Docker Compose...${NC}"
 if ! docker compose version &> /dev/null; then
     mkdir -p ~/.docker/cli-plugins/
-    curl -SL https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-linux-x86_64 -o ~/.docker/cli-plugins/docker-compose
+    curl -SL https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-linux-x86_64 \
+        -o ~/.docker/cli-plugins/docker-compose
     chmod +x ~/.docker/cli-plugins/docker-compose
 else
-    echo -e "${GREEN}✅ Docker Compose đã được cài.${NC}"
+    echo -e "${GREEN}✅ Docker Compose đã có.${NC}"
 fi
 
-echo -e "${GREEN}🛡️ Cài đặt iptables & ufw...${NC}"
-sudo apt install -y iptables ufw
+echo -e "${GREEN}🛡️ Cài đặt firewall và công cụ cần thiết...${NC}"
+sudo apt install -y ufw curl nginx certbot python3-certbot-nginx
 
-echo -e "${GREEN}✅ Bật IP Forward cho WireGuard...${NC}"
-echo "net.ipv4.ip_forward = 1" | sudo tee /etc/sysctl.d/99-wg-easy-forward.conf
-sudo sysctl -p /etc/sysctl.d/99-wg-easy-forward.conf
+echo -e "${GREEN}✅ Bật IP Forward...${NC}"
+echo "net.ipv4.ip_forward=1" | sudo tee /etc/sysctl.d/99-wg.conf > /dev/null
+sudo sysctl --system
 
-echo -e "${GREEN}🌐 Cấu hình DNS cố định (vô hiệu hóa systemd-resolved)...${NC}"
-sudo systemctl disable systemd-resolved
-sudo systemctl stop systemd-resolved
-sudo rm -f /etc/resolv.conf
-echo -e "nameserver 8.8.8.8\nnameserver 1.1.1.1" | sudo tee /etc/resolv.conf > /dev/null
-
-echo -e "${GREEN}📁 Chuẩn bị thư mục WireGuard config...${NC}"
+echo -e "${GREEN}📁 Tạo thư mục WireGuard...${NC}"
 sudo mkdir -p /etc/wireguard
 
-echo -e "${GREEN}🌍 Nhập domain bạn muốn sử dụng cho wg-easy (ví dụ: vpn.example.com):${NC}"
+echo -e "${GREEN}🌍 Nhập domain VPN (ví dụ: vpn.example.com)${NC}"
 read -rp "👉 Domain: " WG_DOMAIN
 
-echo -e "${GREEN}🔑 Nhập mật khẩu mới cho giao diện wg-easy:${NC}"
-read -rsp "👉 Mật khẩu: " WG_PASSWORD
+echo -e "${GREEN}🔑 Nhập password cho wg-easy${NC}"
+read -rsp "👉 Password: " WG_PASSWORD
 echo ""
 
-echo -e "${GREEN}🔍 Kiểm tra domain đã trỏ đúng IP chưa...${NC}"
+echo -e "${GREEN}🔍 Kiểm tra domain DNS...${NC}"
+
 PUBLIC_IP=$(curl -s https://api.ipify.org)
 DOMAIN_IP=$(dig +short "$WG_DOMAIN" | tail -n1)
 
 if [[ "$PUBLIC_IP" != "$DOMAIN_IP" ]]; then
-    echo -e "${RED}⚠️ Domain chưa trỏ đúng IP!${NC}"
-    echo -e "${RED}👉 Domain IP: $DOMAIN_IP | Server IP: $PUBLIC_IP${NC}"
-    read -rp "❓ Bạn vẫn muốn tiếp tục? (y/N): " confirm
-    [[ "$confirm" != "y" && "$confirm" != "Y" ]] && exit 1
+    echo -e "${RED}⚠️ Domain chưa trỏ đúng IP VPS.${NC}"
+    echo -e "${RED}Domain IP: $DOMAIN_IP${NC}"
+    echo -e "${RED}Server IP: $PUBLIC_IP${NC}"
+
+    read -rp "❓ Vẫn tiếp tục? (y/N): " CONFIRM
+
+    if [[ "$CONFIRM" != "y" && "$CONFIRM" != "Y" ]]; then
+        exit 1
+    fi
 else
-    echo -e "${GREEN}✅ Domain đã trỏ đúng IP.${NC}"
+    echo -e "${GREEN}✅ Domain OK.${NC}"
 fi
 
-echo -e "${GREEN}🧱 Tạo docker-compose cho wg-easy...${NC}"
-mkdir -p ~/wg-easy && cd ~/wg-easy
+echo -e "${GREEN}📦 Tạo docker-compose.yml...${NC}"
 
-cat <<EOF | tee docker-compose.yml
+mkdir -p ~/wg-easy
+cd ~/wg-easy
+
+cat > docker-compose.yml <<EOF
 version: "3.8"
+
 services:
   wg-easy:
-    image: weejewel/wg-easy
+    image: ghcr.io/wg-easy/wg-easy
     container_name: wg-easy
+
     environment:
       - WG_HOST=$WG_DOMAIN
       - PASSWORD=$WG_PASSWORD
+
+      # VPN subnet
       - WG_DEFAULT_ADDRESS=10.8.0.x
-      - WG_DEFAULT_DNS=8.8.8.8
+
+      # Split tunnel (chỉ LAN nội bộ)
       - WG_ALLOWED_IPS=10.8.0.0/24
+
+      # DNS cho client
+      - WG_DEFAULT_DNS=1.1.1.1
+
+      # Giữ kết nối ổn định
+      - WG_PERSISTENT_KEEPALIVE=25
+
+      # Giảm lỗi MTU
+      - WG_MTU=1380
+
+    volumes:
+      - /etc/wireguard:/etc/wireguard
+
     ports:
       - "51820:51820/udp"
       - "127.0.0.1:51821:51821/tcp"
-    volumes:
-      - /etc/wireguard:/etc/wireguard
+
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
+
     sysctls:
       - net.ipv4.ip_forward=1
       - net.ipv4.conf.all.src_valid_mark=1
+
     restart: unless-stopped
 EOF
 
 echo -e "${GREEN}🚀 Khởi động wg-easy...${NC}"
 docker compose up -d
 
-echo -e "${GREEN}🌐 Cài đặt Nginx + Certbot...${NC}"
-sudo apt install -y nginx certbot python3-certbot-nginx
+echo -e "${GREEN}🌐 Tạo cấu hình Nginx...${NC}"
 
-echo -e "${GREEN}🛠️ Tạo file cấu hình Nginx...${NC}"
 NGINX_CONF="/etc/nginx/sites-available/wg-easy"
+
 sudo tee "$NGINX_CONF" > /dev/null <<EOF
 server {
     listen 80;
@@ -106,6 +129,7 @@ server {
 
     location / {
         proxy_pass http://127.0.0.1:51821;
+
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
@@ -115,69 +139,54 @@ server {
 EOF
 
 sudo ln -sf "$NGINX_CONF" /etc/nginx/sites-enabled/wg-easy
-sudo nginx -t && sudo systemctl reload nginx
 
-echo -e "${GREEN}🔐 Cấp SSL Let's Encrypt với Certbot...${NC}"
-sudo certbot --nginx -d "$WG_DOMAIN" --non-interactive --agree-tos -m admin@$WG_DOMAIN || {
-    echo -e "${RED}❌ Không thể tạo chứng chỉ SSL. Kiểm tra lại domain!${NC}"
-}
+sudo nginx -t
+sudo systemctl restart nginx
 
-echo -e "${GREEN}📎 Cấu hình tường lửa UFW...${NC}"
+echo -e "${GREEN}🔐 Tạo SSL Let's Encrypt...${NC}"
+
+sudo certbot --nginx -d "$WG_DOMAIN" \
+    --non-interactive \
+    --agree-tos \
+    -m admin@$WG_DOMAIN || true
+
+echo -e "${GREEN}🔥 Cấu hình UFW...${NC}"
+
+sudo ufw allow OpenSSH
 sudo ufw allow 51820/udp
 sudo ufw allow 'Nginx Full'
-sudo ufw allow OpenSSH
+
 sudo ufw --force enable
 
-# === NAT Option ===
-echo -e "${GREEN}❓ Bạn có muốn bật NAT (cho phép client ra Internet qua VPN)? (y/N)${NC}"
-read -rp "👉 Chọn: " ENABLE_NAT
+echo -e "${GREEN}⚡ Reload firewall...${NC}"
+sudo ufw reload
 
-if [[ "$ENABLE_NAT" =~ ^[Yy]$ ]]; then
-    echo -e "${GREEN}🔧 Thiết lập NAT cho WireGuard...${NC}"
+echo -e "${GREEN}🧪 Kiểm tra WireGuard...${NC}"
 
-    MAIN_IF=$(ip route | grep '^default' | awk '{print $5}')
+sleep 3
 
-    # Flush bảng NAT cũ (không đụng filter để không phá UFW)
-    sudo iptables -t nat -F
+docker ps | grep wg-easy || {
+    echo -e "${RED}❌ wg-easy không chạy.${NC}"
+    exit 1
+}
 
-    # NAT cho subnet WireGuard ra internet
-    sudo iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o $MAIN_IF -j MASQUERADE
+echo -e "${GREEN}✅ wg-easy đang hoạt động.${NC}"
 
-    # Cho phép forward traffic qua wg0
-    sudo iptables -A FORWARD -i wg0 -j ACCEPT
-    sudo iptables -A FORWARD -o wg0 -j ACCEPT
-
-    # Lưu rule để tồn tại sau reboot
-    sudo apt install -y iptables-persistent
-    sudo netfilter-persistent save
-
-    echo -e "${GREEN}✅ NAT đã được bật.${NC}"
-else
-    echo -e "${GREEN}🚫 Bỏ qua NAT. Chỉ kết nối nội bộ VPN.${NC}"
-fi
-
-echo -e "${GREEN}⚙️ Thêm alias quản lý nhanh...${NC}"
-cat <<'EOF' >> ~/.bashrc
-
-# Alias cập nhật WireGuard
-alias update-wireguard='sudo apt update && sudo apt install --only-upgrade wireguard -y'
-alias wireguard-update='update-wireguard'
-
-# Alias cập nhật wg-easy
-alias update-wg-easy='bash -c "
-echo \"📥 Kéo image mới nhất của wg-easy...\"
-docker pull weejewel/wg-easy
-echo \"🔄 Khởi động lại container wg-easy...\"
-docker stop wg-easy && docker rm wg-easy
-cd ~/wg-easy && docker compose up -d
-echo \"✅ wg-easy đã được cập nhật!\"
-"'
-
-alias wg-easy-update='update-wg-easy'
-EOF
-
-[ "$EUID" -eq 0 ] && source ~/.bashrc || true
-
-echo -e "${GREEN}🎉 Hoàn tất!${NC}"
-echo -e "${GREEN}🔗 Truy cập wg-easy tại: https://$WG_DOMAIN${NC}"
-echo -e "${GREEN}👤 Tài khoản: admin | Mật khẩu: mật khẩu bạn đã nhập${NC}"
+echo ""
+echo -e "${GREEN}🎉 CÀI ĐẶT HOÀN TẤT${NC}"
+echo ""
+echo -e "${GREEN}🌐 Web UI:${NC} https://$WG_DOMAIN"
+echo -e "${GREEN}🔐 User:${NC} admin"
+echo -e "${GREEN}🔑 Password:${NC} password bạn vừa nhập"
+echo ""
+echo -e "${YELLOW}📌 Lưu ý:${NC}"
+echo "- VPN này chỉ tạo LAN nội bộ giữa các thiết bị"
+echo "- Internet của thiết bị vẫn dùng mạng riêng"
+echo "- Các peer sẽ ping nhau qua IP 10.8.0.x"
+echo ""
+echo -e "${GREEN}📊 Kiểm tra peer:${NC}"
+echo "sudo wg show"
+echo ""
+echo -e "${GREEN}📄 Xem log:${NC}"
+echo "docker logs -f wg-easy"
+```
