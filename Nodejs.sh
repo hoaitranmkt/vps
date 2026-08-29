@@ -1,59 +1,174 @@
 #!/bin/bash
 
-# nodejs.sh - Script cài đặt hoặc cập nhật Node.js LTS mới nhất trên Ubuntu, kèm alias
-
 set -e
 
-# Màu sắc thông báo
 GREEN='\033[0;32m'
+RED='\033[0;31m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m'
+NODE_SOURCE_VERSION='24.x'
 
-echo -e "${YELLOW}🌿 Bắt đầu kiểm tra Node.js...${NC}"
+info() {
+    echo -e "${BLUE}$1${NC}"
+}
 
-# Kiểm tra Node.js đã cài chưa
+success() {
+    echo -e "${GREEN}$1${NC}"
+}
+
+warn() {
+    echo -e "${YELLOW}$1${NC}"
+}
+
+error() {
+    echo -e "${RED}$1${NC}"
+}
+
+success "🌿 Bắt đầu cài đặt hoặc cập nhật Node.js LTS..."
+
+if [[ $EUID -ne 0 ]]; then
+    error "❌ Vui lòng chạy script với quyền root (sudo)."
+    exit 1
+fi
+
+info "📦 Cài đặt gói phụ thuộc..."
+apt update
+apt install -y ca-certificates curl gnupg lsb-release
+
+if [ -r /etc/os-release ]; then
+    . /etc/os-release
+    OS_ID="$ID"
+else
+    error "❌ Không thể xác định hệ điều hành."
+    exit 1
+fi
+
+if [[ "$OS_ID" != "ubuntu" && "$OS_ID" != "debian" ]]; then
+    error "❌ Script chỉ hỗ trợ Ubuntu và Debian. Hệ hiện tại: $OS_ID"
+    exit 1
+fi
+
 if command -v node >/dev/null 2>&1; then
-    CURRENT_VERSION=$(node -v)
-    echo -e "${GREEN}✅ Node.js đã được cài đặt (phiên bản: $CURRENT_VERSION)${NC}"
-    echo -e "${YELLOW}🔄 Đang tiến hành cập nhật lên phiên bản LTS mới nhất...${NC}"
+    warn "🔄 Node.js đã tồn tại (phiên bản hiện tại: $(node -v)), tiến hành cập nhật LTS..."
 else
-    echo -e "${YELLOW}❌ Node.js chưa được cài đặt. Đang tiến hành cài đặt...${NC}"
+    info "📦 Node.js chưa được cài, tiến hành cài đặt LTS..."
 fi
 
-# Gỡ bản cũ (nếu có)
-sudo apt remove -y nodejs || true
+info "🔑 Thiết lập NodeSource repository..."
+install -m 0755 -d /usr/share/keyrings
 
-# Cài bản LTS mới nhất
-curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
-sudo apt install -y nodejs
+rm -f /usr/share/keyrings/nodesource.gpg || true
+rm -f /etc/apt/sources.list.d/nodesource.list || true
+rm -f /etc/apt/sources.list.d/nodesource.sources || true
 
-# Kiểm tra lại phiên bản
-NEW_VERSION=$(node -v)
-echo -e "${GREEN}🎉 Node.js đã được cài đặt/cập nhật lên phiên bản: $NEW_VERSION${NC}"
+curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /usr/share/keyrings/nodesource.gpg
+chmod 644 /usr/share/keyrings/nodesource.gpg
 
-# Kiểm tra npm
-if command -v npm >/dev/null 2>&1; then
-    echo -e "${GREEN}✅ npm đã sẵn sàng (phiên bản: $(npm -v))${NC}"
-else
-    echo -e "${YELLOW}⚠️ npm chưa được cài, đang tiến hành cài đặt...${NC}"
-    sudo apt install -y npm
-fi
+ARCHITECTURE="$(dpkg --print-architecture)"
 
-# Thêm alias vào ~/.bashrc nếu chưa có
-ALIAS_CONTENT=$(cat <<EOF
-# Alias update Node.js
-alias update-nodejs="bash ~/nodejs.sh"
-alias nodejs-update="bash ~/nodejs.sh"
+cat > /etc/apt/sources.list.d/nodesource.sources <<EOF
+Types: deb
+URIs: https://deb.nodesource.com/node_$NODE_SOURCE_VERSION
+Suites: nodistro
+Components: main
+Architectures: $ARCHITECTURE
+Signed-By: /usr/share/keyrings/nodesource.gpg
 EOF
-)
 
-if ! grep -q "alias update-nodejs=" ~/.bashrc; then
-    echo -e "${YELLOW}➕ Đang thêm alias vào ~/.bashrc...${NC}"
-    echo "$ALIAS_CONTENT" >> ~/.bashrc
-    echo -e "${GREEN}✅ Đã thêm alias: update-nodejs, nodejs-update${NC}"
-    echo -e "${YELLOW}⚠️ Hãy chạy 'source ~/.bashrc' hoặc mở terminal mới để dùng alias.${NC}"
+apt update
+apt install -y nodejs
+
+info "🔎 Kiểm tra Node.js..."
+if node --version >/dev/null 2>&1; then
+    INSTALLED_NODE_VERSION="$(node --version)"
+    success "✅ Node.js đã sẵn sàng: $INSTALLED_NODE_VERSION"
 else
-    echo -e "${GREEN}✅ Alias đã tồn tại trong ~/.bashrc${NC}"
+    error "❌ Node.js không hoạt động sau khi cài đặt."
+    exit 1
 fi
 
-echo -e "${GREEN}✅ Hoàn tất.${NC}"
+info "🔎 Kiểm tra npm..."
+if npm --version >/dev/null 2>&1; then
+    NPM_VERSION="$(npm --version)"
+    success "✅ npm đã sẵn sàng: v$NPM_VERSION"
+else
+    error "❌ npm không hoạt động sau khi cài đặt Node.js."
+    exit 1
+fi
+
+TARGET_USER="${SUDO_USER:-$USER}"
+if [ "$TARGET_USER" = "root" ]; then
+    TARGET_BASHRC="/root/.bashrc"
+else
+    TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
+    TARGET_BASHRC="$TARGET_HOME/.bashrc"
+fi
+
+add_aliases() {
+    local target_file="$1"
+    touch "$target_file"
+
+    grep -q '^alias update-nodejs=' "$target_file" || echo 'alias update-nodejs="/usr/local/bin/update-nodejs"' >> "$target_file"
+    grep -q '^alias nodejs-update=' "$target_file" || echo 'alias nodejs-update="/usr/local/bin/nodejs-update"' >> "$target_file"
+}
+
+create_update_commands() {
+    # Ghi cung phien ban NodeSource dang dung o lan cai nay, tranh lech giua
+    # script cai va script update.
+    cat > /usr/local/bin/update-nodejs <<EOF
+#!/bin/bash
+set -e
+
+NODE_SOURCE_VERSION='$NODE_SOURCE_VERSION'
+EOF
+
+    cat >> /usr/local/bin/update-nodejs <<'EOF'
+
+if [[ $EUID -eq 0 ]]; then
+    SUDO=""
+else
+    SUDO="sudo"
+fi
+
+$SUDO apt install -y ca-certificates curl gnupg
+$SUDO install -m 0755 -d /usr/share/keyrings
+$SUDO rm -f /usr/share/keyrings/nodesource.gpg /etc/apt/sources.list.d/nodesource.list /etc/apt/sources.list.d/nodesource.sources || true
+curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | $SUDO gpg --dearmor -o /usr/share/keyrings/nodesource.gpg
+$SUDO chmod 644 /usr/share/keyrings/nodesource.gpg
+ARCHITECTURE="$($SUDO dpkg --print-architecture)"
+cat <<NODEJS_EOF | $SUDO tee /etc/apt/sources.list.d/nodesource.sources > /dev/null
+Types: deb
+URIs: https://deb.nodesource.com/node_$NODE_SOURCE_VERSION
+Suites: nodistro
+Components: main
+Architectures: $ARCHITECTURE
+Signed-By: /usr/share/keyrings/nodesource.gpg
+NODEJS_EOF
+$SUDO apt update
+$SUDO apt install -y nodejs
+node -v
+npm -v
+EOF
+
+    cat > /usr/local/bin/nodejs-update <<'EOF'
+#!/bin/bash
+set -e
+exec /usr/local/bin/update-nodejs "$@"
+EOF
+
+    chmod +x /usr/local/bin/update-nodejs /usr/local/bin/nodejs-update
+}
+
+info "⚙️ Thêm alias và command update..."
+add_aliases "$TARGET_BASHRC"
+add_aliases "/root/.bashrc"
+create_update_commands
+success "✅ Đã tạo command: update-nodejs, nodejs-update"
+
+warn "ℹ️ Alias sẽ có hiệu lực ở phiên shell mới tiếp theo."
+
+echo ""
+success "✅ Hoàn tất cài đặt Node.js LTS."
+info "💡 NodeSource LTS: $NODE_SOURCE_VERSION | Node hiện tại: $INSTALLED_NODE_VERSION | npm: v$NPM_VERSION"
+info "💡 Command đã thêm: update-nodejs, nodejs-update"

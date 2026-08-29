@@ -34,12 +34,48 @@ else
 fi
 
 echo -e "${GREEN}🧱 Mở firewall cần thiết (Nginx & TURN)...${NC}"
-sudo ufw allow OpenSSH
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
-sudo ufw allow 3478/udp
-sudo ufw allow 49152:65535/udp
-sudo ufw --force enable || true
+
+# Doc port SSH that thay vi hardcode "OpenSSH" (=22): bat UFW ma chi mo 22
+# trong khi sshd nghe port khac se lam mat ket noi SSH.
+SSH_PORTS="$(sudo sshd -T 2>/dev/null | awk '/^port /{print $2}' || true)"
+if [[ -z "${SSH_PORTS}" ]]; then
+  SSH_PORTS="$(ss -ltnp 2>/dev/null | grep -i sshd | awk '{print $4}' | sed 's/.*[:.]//' | sort -u || true)"
+fi
+if [[ -z "${SSH_PORTS}" ]]; then
+  SSH_PORTS="22"
+fi
+echo -e "${GREEN}ℹ️ Port SSH phát hiện được: $(echo ${SSH_PORTS} | tr '\n' ' ')${NC}"
+
+UFW_ACTIVE="no"
+if sudo ufw status 2>/dev/null | head -n1 | grep -q 'Status: active'; then
+  UFW_ACTIVE="yes"
+fi
+
+RUN_UFW="yes"
+if [[ "${UFW_ACTIVE}" == "no" ]]; then
+  echo -e "${YELLOW}⚠️ UFW đang TẮT. Bật lên sẽ chặn mọi port inbound không nằm trong danh sách allow,${NC}"
+  echo -e "${YELLOW}   các service khác đang chạy trên host có thể bị chặn.${NC}"
+  read -rp "⏸ Bật UFW và mở port cho NetBird? (y/N): " confirm_ufw
+  [[ "${confirm_ufw:-N}" =~ ^[Yy]$ ]] || RUN_UFW="no"
+fi
+
+if [[ "${RUN_UFW}" == "yes" ]]; then
+  for p in ${SSH_PORTS}; do
+    sudo ufw allow "${p}/tcp" || true
+  done
+  sudo ufw allow 80/tcp || true
+  sudo ufw allow 443/tcp || true
+  sudo ufw allow 3478/udp || true
+  sudo ufw allow 49152:65535/udp || true
+
+  if [[ "${UFW_ACTIVE}" == "no" ]]; then
+    sudo ufw --force enable || true
+  else
+    echo -e "${GREEN}✅ UFW đang bật sẵn, chỉ thêm rule mới.${NC}"
+  fi
+else
+  echo -e "${YELLOW}ℹ️ Bỏ qua UFW. Hãy tự mở 80/tcp, 443/tcp, 3478/udp, 49152-65535/udp ở firewall nhà cung cấp VPS.${NC}"
+fi
 
 echo -e "${GREEN}🐳 Kiểm tra/Cài Docker & Compose...${NC}"
 if ! command -v docker &>/dev/null; then
